@@ -25,6 +25,7 @@ class PriorBox(object):
             if v <= 0:
                 raise ValueError('Variances must be greater than 0')
 
+    #@staticmethod
     def forward(self):
         mean = []
         for k, f in enumerate(self.feature_maps):

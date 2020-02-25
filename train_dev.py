@@ -15,8 +15,6 @@ import torch.utils.data as data
 import numpy as np
 import argparse
 
-from eval import test_net_coco
-
 
 def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
@@ -25,7 +23,7 @@ def str2bool(v):
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Training With Pytorch')
 train_set = parser.add_mutually_exclusive_group()
-parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO', 'COCO_PERSON'],
+parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO'],
                     type=str, help='VOC or COCO')
 parser.add_argument('--dataset_root', default=VOC_ROOT,
                     help='Dataset root directory path')
@@ -53,10 +51,6 @@ parser.add_argument('--visdom', default=False, type=str2bool,
                     help='Use visdom for loss visualization')
 parser.add_argument('--save_folder', default='weights/',
                     help='Directory for saving checkpoint models')
-parser.add_argument('--eval_interval', default=10000, type=int,
-                    help='Directory for saving checkpoint models')
-parser.add_argument('--eval_folder', default='eval/', type=str,
-                    help='File path to save results')
 args = parser.parse_args()
 
 
@@ -93,42 +87,13 @@ def train():
         dataset = VOCDetection(root=args.dataset_root,
                                transform=SSDAugmentation(cfg['min_dim'],
                                                          MEANS))
-    elif args.dataset == 'COCO_PERSON':
-        if args.dataset_root == VOC_ROOT:
-            if not os.path.exists(COCO_ROOT):
-                parser.error('Must specify dataset_root if specifying dataset')
-            print("WARNING: Using default COCO dataset_root because " +
-                  "--dataset_root was not specified.")
-            args.dataset_root = COCO_ROOT
-        cfg = coco_person
-        dataset = COCOPersonDetection(root=args.dataset_root,
-                                image_set='train2014',
-                                transform=SSDAugmentation(cfg['min_dim'],
-                                                          MEANS))
-        test_dataset = COCOPersonDetection(root=args.dataset_root,
-                                            image_set='val2014',
-                                            transform=BaseTransform(300, MEANS))
-        gt_json = os.path.expanduser('~/data/datasets/COCO/annotations/instances_val2014.json')
-        just_person=True
-    #elif args.dataset == 'MODANET':
-    #    if args.dataset_root == VOC_ROOT:
-    #        if not os.path.exists(COCO_ROOT):
-    #            parser.error('Must specify dataset_root if specifying dataset')
-    #        print("WARNING: Using default COCO dataset_root because " +
-    #              "--dataset_root was not specified.")
-    #        args.dataset_root = COCO_ROOT
-    #    cfg = modanet
-    #    dataset = ModanetDetection(root=args.dataset_root,
-    #                            transform=SSDAugmentation(cfg['min_dim'],
-    #                                                      MEANS))
 
     if args.visdom:
         import visdom
         viz = visdom.Visdom()
 
-    ssd_net = build_ssd(cfg['min_dim'], cfg['num_classes'])
+    ssd_net = build_ssd('train', cfg['min_dim'], cfg['num_classes'])
     net = ssd_net
-    net.train()
 
     if args.cuda:
         net = torch.nn.DataParallel(ssd_net)
@@ -181,10 +146,6 @@ def train():
                                   num_workers=args.num_workers,
                                   shuffle=True, collate_fn=detection_collate,
                                   pin_memory=True)
-    test_dataloader = data.DataLoader(test_dataset, batch_size=1,
-                                        num_workers=8, shuffle=False, 
-                                        collate_fn=detection_collate,
-                                        pin_memory=True)
     # create batch iterator
     batch_iterator = iter(data_loader)
     for iteration in range(args.start_iter, cfg['max_iter']):
@@ -201,12 +162,7 @@ def train():
             adjust_learning_rate(optimizer, args.gamma, step_index)
 
         # load train data
-        try:
-            inputs, targets = next(batch_iterator)
-        except StopIteration:
-            batch_iterator=iter(data_loader)
-            inputs, targets = next(batch_iterator)
-        images = inputs['data']
+        images, targets = next(batch_iterator)
 
         if args.cuda:
             images = Variable(images.cuda())
@@ -224,30 +180,21 @@ def train():
         loss.backward()
         optimizer.step()
         t1 = time.time()
-        loc_loss += loss_l.item()
-        conf_loss += loss_c.item()
+        loc_loss += loss_l.data[0]
+        conf_loss += loss_c.data[0]
 
         if iteration % 10 == 0:
             print('timer: %.4f sec.' % (t1 - t0))
-            print('iter ' + repr(iteration) + ' || Loss: %.4f ||' % (loss.item()), end=' ')
+            print('iter ' + repr(iteration) + ' || Loss: %.4f ||' % (loss.data[0]), end=' ')
 
         if args.visdom:
-            update_vis_plot(iteration, loss_l.item(), loss_c.item(),
+            update_vis_plot(iteration, loss_l.data[0], loss_c.data[0],
                             iter_plot, epoch_plot, 'append')
 
         if iteration != 0 and iteration % 5000 == 0:
             print('Saving state, iter:', iteration)
             torch.save(ssd_net.state_dict(), 'weights/ssd300_COCO_' +
                        repr(iteration) + '.pth')
-
-        if iteration !=0 and iteration % args.eval_interval == 0:
-            test_iter = iter(test_dataloader)
-            net_test = net.module
-            test_net_coco( gt_json, net_test, args.cuda, test_iter,
-                  BaseTransform(net_test.size, MEANS), im_size=300,
-                  just_person=just_person, thresh=0.01)
-            net.train()
-
     torch.save(ssd_net.state_dict(),
                args.save_folder + '' + args.dataset + '.pth')
 

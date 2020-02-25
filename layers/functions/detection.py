@@ -21,6 +21,7 @@ class Detect(Function):
         self.conf_thresh = conf_thresh
         self.variance = cfg['variance']
 
+    #@staticmethod
     def forward(self, loc_data, conf_data, prior_data):
         """
         Args:

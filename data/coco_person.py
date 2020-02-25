@@ -13,21 +13,7 @@ IMAGES = 'images'
 ANNOTATIONS = 'annotations'
 COCO_API = 'PythonAPI'
 INSTANCES_SET = 'instances_{}.json'
-COCO_CLASSES = ('person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
-                'train', 'truck', 'boat', 'traffic light', 'fire', 'hydrant',
-                'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog',
-                'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra',
-                'giraffe', 'backpack', 'umbrella', 'handbag', 'tie',
-                'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
-                'kite', 'baseball bat', 'baseball glove', 'skateboard',
-                'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup',
-                'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
-                'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza',
-                'donut', 'cake', 'chair', 'couch', 'potted plant', 'bed',
-                'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote',
-                'keyboard', 'cell phone', 'microwave oven', 'toaster', 'sink',
-                'refrigerator', 'book', 'clock', 'vase', 'scissors',
-                'teddy bear', 'hair drier', 'toothbrush')
+COCO_PERSON_CLASSES = ('person' )
 
 
 def get_label_map(label_file):
@@ -72,7 +58,7 @@ class COCOAnnotationTransform(object):
         return res  # [[xmin, ymin, xmax, ymax, label_idx], ... ]
 
 
-class COCODetection(data.Dataset):
+class COCOPersonDetection(data.Dataset):
     """`MS Coco Detection <http://mscoco.org/dataset/#detections-challenge2016>`_ Dataset.
     Args:
         root (string): Root directory where images are downloaded to.
@@ -87,10 +73,12 @@ class COCODetection(data.Dataset):
                  target_transform=COCOAnnotationTransform(), dataset_name='MS COCO'):
         sys.path.append(osp.join(root, COCO_API))
         from pycocotools.coco import COCO
-        self.root = osp.join(root, IMAGES, image_set)
+        self.root = osp.join(root, image_set)
         self.coco = COCO(osp.join(root, ANNOTATIONS,
                                   INSTANCES_SET.format(image_set)))
-        self.ids = list(self.coco.imgToAnns.keys())
+        self.catIds = self.coco.getCatIds(catNms=['person'])
+        self.ids = self.coco.getImgIds(catIds=self.catIds)
+        #self.ids = list(self.coco.imgToAnns.keys())
         self.transform = transform
         self.target_transform = target_transform
         self.name = dataset_name
@@ -103,8 +91,8 @@ class COCODetection(data.Dataset):
             tuple: Tuple (image, target).
                    target is the object returned by ``coco.loadAnns``.
         """
-        im, gt, h, w = self.pull_item(index)
-        return im, gt
+        inputs, gt = self.pull_item(index)
+        return inputs, gt
 
     def __len__(self):
         return len(self.ids)
@@ -119,13 +107,14 @@ class COCODetection(data.Dataset):
         """
         img_id = self.ids[index]
         target = self.coco.imgToAnns[img_id]
-        ann_ids = self.coco.getAnnIds(imgIds=img_id)
+        ann_ids = self.coco.getAnnIds(imgIds=img_id, catIds=self.catIds)
 
         target = self.coco.loadAnns(ann_ids)
         path = osp.join(self.root, self.coco.loadImgs(img_id)[0]['file_name'])
         assert osp.exists(path), 'Image path does not exist: {}'.format(path)
         img = cv2.imread(osp.join(self.root, path))
         height, width, _ = img.shape
+        inputs = {}
         if self.target_transform is not None:
             target = self.target_transform(target, width, height)
         if self.transform is not None:
@@ -136,7 +125,14 @@ class COCODetection(data.Dataset):
             img = img[:, :, (2, 1, 0)]
 
             target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
-        return torch.from_numpy(img).permute(2, 0, 1), target, height, width
+        inputs['data'] = torch.from_numpy(img).permute(2, 0, 1)
+        inputs['height'] = height
+        inputs['width'] = width
+        inputs['image_id'] = img_id
+        return inputs, target
+
+    def get_img_id(self, index):
+        return self.ids[index]
 
     def pull_image(self, index):
         '''Returns the original image object at index in PIL form
