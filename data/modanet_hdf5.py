@@ -7,58 +7,9 @@ import torch.utils.data as data
 import torchvision.transforms as transforms
 import cv2
 import numpy as np
+import h5py
 
-COCO_ROOT = osp.join(HOME, 'data/datasets/COCO/')
-IMAGES = 'images'
-ANNOTATIONS = 'annotations'
-COCO_API = 'PythonAPI'
-INSTANCES_SET = 'instances_{}.json'
-COCO_PERSON_CLASSES = ('person' )
-
-
-def get_label_map(label_file):
-    label_map = {}
-    labels = open(label_file, 'r')
-    for line in labels:
-        ids = line.split(',')
-        label_map[int(ids[0])] = int(ids[1])
-    return label_map
-
-
-class COCOAnnotationTransform(object):
-    """Transforms a COCO annotation into a Tensor of bbox coords and label index
-    Initilized with a dictionary lookup of classnames to indexes
-    """
-    def __init__(self):
-        self.label_map = get_label_map(osp.join(COCO_ROOT, 'coco_labels.txt'))
-
-    def __call__(self, target, width, height):
-        """
-        Args:
-            target (dict): COCO target json annotation as a python dict
-            height (int): height
-            width (int): width
-        Returns:
-            a list containing lists of bounding boxes  [bbox coords, class idx]
-        """
-        scale = np.array([width, height, width, height])
-        res = []
-        for obj in target:
-            if 'bbox' in obj:
-                bbox = obj['bbox']
-                bbox[2] += bbox[0]
-                bbox[3] += bbox[1]
-                label_idx = self.label_map[obj['category_id']] - 1
-                final_box = list(np.array(bbox)/scale)
-                final_box.append(label_idx)
-                res += [final_box]  # [xmin, ymin, xmax, ymax, label_idx]
-            else:
-                print("no bbox problem!")
-
-        return res  # [[xmin, ymin, xmax, ymax, label_idx], ... ]
-
-
-class COCOPersonDetection(data.Dataset):
+class ModanetDetectionHDF5(data.Dataset):
     """`MS Coco Detection <http://mscoco.org/dataset/#detections-challenge2016>`_ Dataset.
     Args:
         root (string): Root directory where images are downloaded to.
@@ -69,18 +20,21 @@ class COCOPersonDetection(data.Dataset):
         in the target (bbox) and transforms it.
     """
 
-    def __init__(self, root, image_set='trainval35k', transform=None,
-                 target_transform=COCOAnnotationTransform(), dataset_name='MS COCO'):
+    def __init__(self, hdf5_root, part='train', transform=None,
+                 dataset_name='MODANET HDF5'):
         sys.path.append(osp.join(root, COCO_API))
         from pycocotools.coco import COCO
-        self.root = osp.join(root, image_set)
-        self.coco = COCO(osp.join(root, ANNOTATIONS,
-                                  INSTANCES_SET.format(image_set)))
-        self.catIds = self.coco.getCatIds(catNms=['person'])
-        self.ids = self.coco.getImgIds(catIds=self.catIds)
+        self.root = hdf5_root
+        self.part = part
+        self.h5 = h5py.File(hdf5_root, 'r')
+        self.image = self.h5[part]
+        self.keys = list(self.image.keys())
+        #self.coco = COCO(osp.join(root, ANNOTATIONS,
+        #                          INSTANCES_SET.format(image_set)))
+        #self.catIds = self.coco.getCatIds(catNms=['person'])
+        #self.ids = self.coco.getImgIds(catIds=self.catIds)
         #self.ids = list(self.coco.imgToAnns.keys())
         self.transform = transform
-        self.target_transform = target_transform
         self.name = dataset_name
 
     def __getitem__(self, index):
@@ -105,21 +59,25 @@ class COCOPersonDetection(data.Dataset):
             tuple: Tuple (image, target, height, width).
                    target is the object returned by ``coco.loadAnns``.
         """
-        img_id = self.ids[index]
-        target = self.coco.imgToAnns[img_id]
-        ann_ids = self.coco.getAnnIds(imgIds=img_id, catIds=self.catIds)
-
-        target = self.coco.loadAnns(ann_ids)
-        path = osp.join(self.root, self.coco.loadImgs(img_id)[0]['file_name'])
-        assert osp.exists(path), 'Image path does not exist: {}'.format(path)
-        img = cv2.imread(osp.join(self.root, path))
+        image = self.image[self.keys[index]]
+        img = np.array(image['data'])
+        #ori_img = Image.fromarray(img.astype(np.uint8))
+        boxes = np.array(image['bbox']).astype(np.float32)
+        crop_box = np.array(image['crop_box'])
+        labels = np.array(image['category_id'])-1
+        image_id = np.array(image['image_id'])
+        scale = np.array(image['scale'])
+        mirrored = image['mirrored'][()]
         height, width, _ = img.shape
         inputs = {}
-        if self.target_transform is not None:
-            # coco transform can transfer targets to [x1, y1, x2, y2, label] (normalized to 1)
-            target = self.target_transform(target, width, height)
+
+        # transform labels 
+        # transfer targets to [x1, y1, x2, y2, label] (normalized to 1)
+        scale = np.array([width, height, width, height])
+        boxes = boxes / scale
+        target = np.column_stack((boxes, labels))
         if self.transform is not None:
-            target = np.array(target)
+            img = img.transpose((2,1,0)) #make it GBR mode
             img, boxes, labels = self.transform(img, target[:, :4],
                                                 target[:, 4])
             # to rgb
@@ -129,7 +87,9 @@ class COCOPersonDetection(data.Dataset):
         inputs['data'] = torch.from_numpy(img).permute(2, 0, 1)
         inputs['height'] = height
         inputs['width'] = width
-        inputs['image_id'] = img_id
+        inputs['image_id'] = image_id
+        inputs['crop_box'] = crop_box
+        inputs['scale'] = scale
         return inputs, target
 
     def get_img_id(self, index):

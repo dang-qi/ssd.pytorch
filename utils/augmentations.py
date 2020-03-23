@@ -310,6 +310,11 @@ class RandomSampleCrop(object):
 
 
 class Expand(object):
+    '''Random padding the image, the (left, top, right, down)
+       are random. The expand ratio is between 1-4, which means
+       the height and width of padding image is ratio times of
+       the original size.
+    '''
     def __init__(self, mean):
         self.mean = mean
 
@@ -398,6 +403,9 @@ class PhotometricDistort(object):
 
 
 class SSDAugmentation(object):
+    '''The crop and resize are not really same scale for height and width
+       which means the output image is kind of twisted.
+    '''
     def __init__(self, size=300, mean=(104, 117, 123)):
         self.mean = mean
         self.size = size

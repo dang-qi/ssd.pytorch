@@ -15,7 +15,7 @@ import torch.utils.data as data
 import numpy as np
 import argparse
 
-from eval import test_net_coco
+from eval import test_net_coco, test_net_modanet_hdf5
 
 
 def str2bool(v):
@@ -25,7 +25,7 @@ def str2bool(v):
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Training With Pytorch')
 train_set = parser.add_mutually_exclusive_group()
-parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO', 'COCO_PERSON'],
+parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO', 'COCO_PERSON', 'MODANET_HDF5'],
                     type=str, help='VOC or COCO')
 parser.add_argument('--dataset_root', default=VOC_ROOT,
                     help='Dataset root directory path')
@@ -57,6 +57,8 @@ parser.add_argument('--eval_interval', default=10000, type=int,
                     help='Directory for saving checkpoint models')
 parser.add_argument('--eval_folder', default='eval/', type=str,
                     help='File path to save results')
+parser.add_argument('--size', default=256, type=int,
+                    help='input image size, just vailid for hdf5 dataset coco person dataset')
 args = parser.parse_args()
 
 
@@ -100,33 +102,31 @@ def train():
             print("WARNING: Using default COCO dataset_root because " +
                   "--dataset_root was not specified.")
             args.dataset_root = COCO_ROOT
-        cfg = coco_person
+        cfg = globals()['coco_person_{}'.format(args.size)]
         dataset = COCOPersonDetection(root=args.dataset_root,
                                 image_set='train2014',
                                 transform=SSDAugmentation(cfg['min_dim'],
                                                           MEANS))
         test_dataset = COCOPersonDetection(root=args.dataset_root,
                                             image_set='val2014',
-                                            transform=BaseTransform(300, MEANS))
+                                            transform=BaseTransform(cfg['min_dim'], MEANS))
         gt_json = os.path.expanduser('~/data/datasets/COCO/annotations/instances_val2014.json')
         just_person=True
-    #elif args.dataset == 'MODANET':
-    #    if args.dataset_root == VOC_ROOT:
-    #        if not os.path.exists(COCO_ROOT):
-    #            parser.error('Must specify dataset_root if specifying dataset')
-    #        print("WARNING: Using default COCO dataset_root because " +
-    #              "--dataset_root was not specified.")
-    #        args.dataset_root = COCO_ROOT
-    #    cfg = modanet
-    #    dataset = ModanetDetection(root=args.dataset_root,
-    #                            transform=SSDAugmentation(cfg['min_dim'],
-    #                                                      MEANS))
+    elif args.dataset == 'MODANET':
+        cfg = globals()['modanet_{}'.format(args.size)]
+        h5_root = os.path.expanduser('~/data/datasets/modanet/modanet_{}_{}_{}_hdf5.hdf5')
+        h5_root_train = h5_root.format(cfg.size/2, cfg.size, 'train')
+        h5_root_val = h5_root.format(cfg.size/2, cfg.size, 'val')
+        dataset = ModanetDetectionHDF5(h5_root_train, part='train', transform=SSDAugmentation(cfg['min_dim'], MEANS))
+        test_dataset = ModanetDetectionHDF5(h5_root_val, part='val', transform=BaseTransform(cfg['min_dim'], MEANS))
+        gt_json = os.path.expanduser('~/data/datasets/modanet/Annots/modanet_instances_val_new.json')
+        just_person = False
 
     if args.visdom:
         import visdom
         viz = visdom.Visdom()
 
-    ssd_net = build_ssd(cfg['min_dim'], cfg['num_classes'])
+    ssd_net = build_ssd(cfg, size=cfg['min_dim'], num_classes=cfg['num_classes'] )
     net = ssd_net
     net.train()
 
@@ -237,19 +237,20 @@ def train():
 
         if iteration != 0 and iteration % 5000 == 0:
             print('Saving state, iter:', iteration)
-            torch.save(ssd_net.state_dict(), 'weights/ssd300_COCO_' +
-                       repr(iteration) + '.pth')
+            torch.save(ssd_net.state_dict(), 'weights/ssd300_{}_{}_{}.pth'.format(args.dataset, args.size, iteration))
 
         if iteration !=0 and iteration % args.eval_interval == 0:
             test_iter = iter(test_dataloader)
             net_test = net.module
-            test_net_coco( gt_json, net_test, args.cuda, test_iter,
-                  BaseTransform(net_test.size, MEANS), im_size=300,
-                  just_person=just_person, thresh=0.01)
+            if args.dataset == 'MODANET':
+                test_net_modanet_hdf5(gt_json, net_test, args.cuda, test_iter, just_person=just_person, thresh=0.01)
+            else:
+                test_net_coco( gt_json, net_test, args.cuda, test_iter,
+                    just_person=just_person, thresh=0.01)
             net.train()
 
     torch.save(ssd_net.state_dict(),
-               args.save_folder + '' + args.dataset + '.pth')
+               args.save_folder + '' + args.dataset + str(args.size) + '.pth')
 
 
 def adjust_learning_rate(optimizer, gamma, step):

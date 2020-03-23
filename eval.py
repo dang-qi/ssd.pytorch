@@ -12,6 +12,7 @@ from torch.autograd import Variable
 from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection, BaseTransform, COCOPersonDetection, COCO_ROOT
 from data import VOC_CLASSES as labelmap
 import torch.utils.data as data
+from data import coco_person
 
 from ssd import build_ssd
 
@@ -150,8 +151,91 @@ def get_output_dir(name, phase):
     return filedir
 
 
-def test_net_coco(anno_file, net, cuda, dataloader, transform, just_person=False,
-             im_size=300, thresh=0.05):
+def test_net_modanet_hdf5(anno_file, net, cuda, dataloader, just_person=False,
+             thresh=0.05):
+    '''
+    evaluation format:
+    [{
+        "image_id": int, 
+        "category_id": int, 
+        "bbox": [x,y,width,height], 
+        "score": float
+    }]
+    '''
+    #num_images = len(dataset)
+    # all detections are collected into:
+    #    all_boxes[cls][image] = N x 5 array of detections in
+    #    (x1, y1, x2, y2, score)
+    #all_boxes = [[[] for _ in range(num_images)]
+    #             for _ in range(len(labelmap)+1)]
+
+    # timers
+    #_t = {'im_detect': Timer(), 'misc': Timer()}
+
+    print('start evaluate')
+    net.eval()
+    detection_time = 0
+    output_dir = get_output_dir('temp_result', set_type)
+    det_file = os.path.join(output_dir, 'detections.json')
+
+    results = []
+    data_num = 0
+    #for i in range(num_images):
+    for i, (inputs, gt) in enumerate(tqdm.tqdm(dataloader, desc='Testing')):
+        #im, gt, h, w = dataset.pull_item(i)
+
+        #x = Variable(im.unsqueeze(0))
+
+        x = inputs['data']
+        data_num +=len(x)
+        if cuda:
+            x = x.cuda()
+        #_t['im_detect'].tic()
+        start = time.time()
+        detections = net(x).data
+        detection_time += time.time()-start
+        #detect_time = _t['im_detect'].toc(average=False)
+
+        for detection, h, w, im_id, scale, crop_box in zip(detections, inputs['height'], 
+                                                           inputs['width'], inputs['image_id'], inputs['scale'],
+                                                           inputs['crop_box'] ):
+            for j, dets in enumerate(detection): 
+                # skip j = 0, because it's the background class
+                if j==0:
+                    continue
+            #dets = detections[0, j, :]
+                mask = dets[:, 0].gt(0.).expand(5, dets.size(0)).t()
+                dets = torch.masked_select(dets, mask).view(-1, 5)
+                if dets.size(0) == 0:
+                    continue
+                boxes = dets[:, 1:]
+                boxes[:, 0] *= w
+                boxes[:, 2] *= w
+                boxes[:, 1] *= h
+                boxes[:, 3] *= h
+                # convert boxes to x,y,w,h
+                boxes[:,2] -= boxes[:,0] 
+                boxes[:,3] -= boxes[:,1] 
+                scores = dets[:, 0].cpu().numpy()
+
+                # add human information
+                boxes = boxes/scale
+                boxes[:,0] += crop_box[0]
+                boxes[:,1] += crop_box[1]
+
+                boxes = boxes.cpu().numpy().astype(int)
+                for box, score in zip(boxes, scores):
+                    results.append({'image_id': im_id,
+                                    'category_id': j,
+                                    'bbox': box.tolist(),
+                                    'score': float(score)})
+
+    print('total detection time is {}'.format(detection_time))
+    print('detection time per image is {}'.format(detection_time/data_num))
+    print('Evaluating detections')
+    run_eval_coco(results, anno_file, det_file, just_person=just_person)
+def test_net_coco(anno_file, net, cuda, dataloader, just_person=False,
+             thresh=0.05):
     '''
     evaluation format:
     [{
@@ -210,6 +294,9 @@ def test_net_coco(anno_file, net, cuda, dataloader, transform, just_person=False
                 boxes[:, 2] *= w
                 boxes[:, 1] *= h
                 boxes[:, 3] *= h
+                # convert boxes to x,y,w,h
+                boxes[:,2] -= boxes[:,0] 
+                boxes[:,3] -= boxes[:,1] 
                 scores = dets[:, 0].cpu().numpy()
 
                 boxes = boxes.cpu().numpy().astype(int)
@@ -243,6 +330,7 @@ if __name__ == '__main__':
     if args.dataset == 'coco_person':
         gt_json=os.path.expanduser('~/data/datasets/COCO/annotations/instances_val2014.json')
         num_classes = 2
+        config = coco_person
     elif args.dataset == 'modanet':
         num_classes = 14 # plus background
         pass
@@ -250,7 +338,7 @@ if __name__ == '__main__':
         raise TypeError('Invalid dataset name')
     # load net
     #num_classes = len(labelmap) + 1                      # +1 for background
-    net = build_ssd('test', 300, num_classes)            # initialize SSD
+    net = build_ssd(config, 300, num_classes)            # initialize SSD
     net.load_state_dict(torch.load(args.trained_model))
     net.eval()
     print('Finished loading model!')
@@ -269,5 +357,4 @@ if __name__ == '__main__':
         cudnn.benchmark = True
     # evaluation
     test_net_coco( gt_json, net, args.cuda, data_loader,
-                  BaseTransform(net.size, dataset_mean), im_size=300,
                   just_person=args.just_person, thresh=args.confidence_threshold)

@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from layers import *
-from data import voc, coco
+from data import voc, coco, coco_person
 import os
 
 
@@ -24,10 +24,11 @@ class SSD(nn.Module):
         head: "multibox head" consists of loc and conf conv layers
     """
 
-    def __init__(self, size, base, extras, head, num_classes):
+    def __init__(self, size, base, extras, head, num_classes, cfg):
         super(SSD, self).__init__()
         self.num_classes = num_classes
-        self.cfg = (coco, voc)[num_classes == 21]
+        #self.cfg = (coco, voc)[num_classes == 21]
+        self.cfg = cfg
         self.priorbox = PriorBox(self.cfg)
         self.priors = Variable(self.priorbox.forward(), volatile=True)
         self.size = size
@@ -85,6 +86,8 @@ class SSD(nn.Module):
             x = F.relu(v(x), inplace=True)
             if k % 2 == 1:
                 sources.append(x)
+        #for temp in sources:
+        #    print(temp.shape)
 
         # apply multibox head to source layers
         for (x, l, c) in zip(sources, self.loc, self.conf):
@@ -181,24 +184,32 @@ def multibox(vgg, extra_layers, cfg, num_classes):
 base = {
     '300': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
             512, 512, 512],
+    '416': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
+            512, 512, 512],
     '512': [],
+    '800': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
+            512, 512, 512],
 }
 extras = {
     '300': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
+    '416': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
     '512': [],
+    '800': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
 }
 mbox = {
     '300': [4, 6, 6, 6, 4, 4],  # number of boxes per feature map location
+    '416': [4, 6, 6, 6, 4, 4],  # number of boxes per feature map location
     '512': [],
+    '800': [4, 6, 6, 6, 4, 4],  # number of boxes per feature map location
 }
 
 
-def build_ssd(size=300, num_classes=21):
-    if size != 300:
-        print("ERROR: You specified size " + repr(size) + ". However, " +
-              "currently only SSD300 (size=300) is supported!")
-        return
+def build_ssd(config, size=300, num_classes=21):
+    #if size != 300:
+    #    print("ERROR: You specified size " + repr(size) + ". However, " +
+    #          "currently only SSD300 (size=300) is supported!")
+    #    return
     base_, extras_, head_ = multibox(vgg(base[str(size)], 3),
                                      add_extras(extras[str(size)], 1024),
                                      mbox[str(size)], num_classes)
-    return SSD( size, base_, extras_, head_, num_classes)
+    return SSD( size, base_, extras_, head_, num_classes, config)

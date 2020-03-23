@@ -2,6 +2,7 @@ from .voc0712 import VOCDetection, VOCAnnotationTransform, VOC_CLASSES, VOC_ROOT
 
 from .coco import COCODetection, COCOAnnotationTransform, COCO_CLASSES, COCO_ROOT, get_label_map
 from .coco_person import COCOPersonDetection, COCO_PERSON_CLASSES
+from .modanet_hdf5 import ModanetDetectionHDF5
 from .config import *
 import torch
 import cv2
