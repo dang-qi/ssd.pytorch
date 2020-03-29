@@ -25,7 +25,7 @@ def str2bool(v):
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Training With Pytorch')
 train_set = parser.add_mutually_exclusive_group()
-parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO', 'COCO_PERSON', 'MODANET_HDF5'],
+parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO', 'COCO_PERSON', 'MODANET'],
                     type=str, help='VOC or COCO')
 parser.add_argument('--dataset_root', default=VOC_ROOT,
                     help='Dataset root directory path')
@@ -114,9 +114,10 @@ def train():
         just_person=True
     elif args.dataset == 'MODANET':
         cfg = globals()['modanet_{}'.format(args.size)]
+        print(cfg)
         h5_root = os.path.expanduser('~/data/datasets/modanet/modanet_{}_{}_{}_hdf5.hdf5')
-        h5_root_train = h5_root.format(cfg.size/2, cfg.size, 'train')
-        h5_root_val = h5_root.format(cfg.size/2, cfg.size, 'val')
+        h5_root_train = h5_root.format(cfg['min_dim']//2, cfg['min_dim'], 'train')
+        h5_root_val = h5_root.format(cfg['min_dim']//2, cfg['min_dim'], 'val')
         dataset = ModanetDetectionHDF5(h5_root_train, part='train', transform=SSDAugmentation(cfg['min_dim'], MEANS))
         test_dataset = ModanetDetectionHDF5(h5_root_val, part='val', transform=BaseTransform(cfg['min_dim'], MEANS))
         gt_json = os.path.expanduser('~/data/datasets/modanet/Annots/modanet_instances_val_new.json')
@@ -182,7 +183,7 @@ def train():
                                   shuffle=True, collate_fn=detection_collate,
                                   pin_memory=True)
     test_dataloader = data.DataLoader(test_dataset, batch_size=1,
-                                        num_workers=8, shuffle=False, 
+                                        num_workers=args.num_workers, shuffle=False, 
                                         collate_fn=detection_collate,
                                         pin_memory=True)
     # create batch iterator

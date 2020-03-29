@@ -218,14 +218,14 @@ def test_net_modanet_hdf5(anno_file, net, cuda, dataloader, just_person=False,
                 boxes[:,3] -= boxes[:,1] 
                 scores = dets[:, 0].cpu().numpy()
 
+                boxes = boxes.cpu().numpy().astype(int)
                 # add human information
                 boxes = boxes/scale
                 boxes[:,0] += crop_box[0]
                 boxes[:,1] += crop_box[1]
 
-                boxes = boxes.cpu().numpy().astype(int)
                 for box, score in zip(boxes, scores):
-                    results.append({'image_id': im_id,
+                    results.append({'image_id': int(im_id),
                                     'category_id': j,
                                     'bbox': box.tolist(),
                                     'score': float(score)})

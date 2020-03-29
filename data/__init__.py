@@ -27,16 +27,24 @@ def detection_collate(batch):
     ws = []
     hs = []
     im_ids = []
+    scales = []
+    crop_box = []
     for sample in batch:
         imgs.append(sample[0]['data'])
         targets.append(torch.FloatTensor(sample[1]))
         ws.append(sample[0]['width'])
         hs.append(sample[0]['height'])
         im_ids.append(sample[0]['image_id'])
+        if 'scale' in sample[0]:
+            scales.append(sample[0]['scale'])
+        if 'crop_box' in sample[0]:
+            crop_box.append(sample[0]['crop_box'])
     inputs['data'] = torch.stack(imgs, 0)
     inputs['width'] = ws
     inputs['height'] = hs
     inputs['image_id'] = im_ids
+    inputs['scale'] = scales
+    inputs['crop_box'] = crop_box
     return inputs, targets
 
 

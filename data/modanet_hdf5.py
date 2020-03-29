@@ -22,7 +22,7 @@ class ModanetDetectionHDF5(data.Dataset):
 
     def __init__(self, hdf5_root, part='train', transform=None,
                  dataset_name='MODANET HDF5'):
-        sys.path.append(osp.join(root, COCO_API))
+        #sys.path.append(osp.join(root, COCO_API))
         from pycocotools.coco import COCO
         self.root = hdf5_root
         self.part = part
@@ -49,7 +49,7 @@ class ModanetDetectionHDF5(data.Dataset):
         return inputs, gt
 
     def __len__(self):
-        return len(self.ids)
+        return len(self.keys)
 
     def pull_item(self, index):
         """
@@ -66,7 +66,7 @@ class ModanetDetectionHDF5(data.Dataset):
         crop_box = np.array(image['crop_box'])
         labels = np.array(image['category_id'])-1
         image_id = np.array(image['image_id'])
-        scale = np.array(image['scale'])
+        resize_scale = np.array(image['scale'])
         mirrored = image['mirrored'][()]
         height, width, _ = img.shape
         inputs = {}
@@ -77,7 +77,8 @@ class ModanetDetectionHDF5(data.Dataset):
         boxes = boxes / scale
         target = np.column_stack((boxes, labels))
         if self.transform is not None:
-            img = img.transpose((2,1,0)) #make it GBR mode
+            #img = img.transpose((2,1,0)) #make it GBR mode
+            img = img[:, :, (2,1,0)] # make it BGR
             img, boxes, labels = self.transform(img, target[:, :4],
                                                 target[:, 4])
             # to rgb
@@ -89,7 +90,7 @@ class ModanetDetectionHDF5(data.Dataset):
         inputs['width'] = width
         inputs['image_id'] = image_id
         inputs['crop_box'] = crop_box
-        inputs['scale'] = scale
+        inputs['scale'] = resize_scale
         return inputs, target
 
     def get_img_id(self, index):
