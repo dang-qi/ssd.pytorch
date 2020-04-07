@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection, BaseTransform, COCOPersonDetection, COCO_ROOT
+from data import ModanetDetectionHDF5, MEANS
 from data import VOC_CLASSES as labelmap
 import torch.utils.data as data
 from data import coco_person
@@ -64,7 +65,7 @@ def parse_arg():
                         help='Cleanup and remove results files following eval')
     parser.add_argument('--just_person', default=False, type=str2bool,
                         help='Just evaluate person result for coco')
-    parser.add_argument('--dataset', default='coco_person', type=str,
+    parser.add_argument('--dataset', default='COCO_PERSON', type=str,
                         help='Datset name, can be coco_person and modanet')
 
     args = parser.parse_args()
@@ -327,34 +328,60 @@ def run_eval_coco(results, anno_file, det_file, just_person=False):
 
 if __name__ == '__main__':
     args = parse_arg()
-    if args.dataset == 'coco_person':
-        gt_json=os.path.expanduser('~/data/datasets/COCO/annotations/instances_val2014.json')
-        num_classes = 2
-        config = coco_person
-    elif args.dataset == 'modanet':
-        num_classes = 14 # plus background
-        pass
+    #if args.dataset == 'coco_person':
+    #    gt_json=os.path.expanduser('~/data/datasets/COCO/annotations/instances_val2014.json')
+    #    num_classes = 2
+    #    config = coco_person
+    #elif args.dataset == 'modanet':
+    #    num_classes = 14 # plus background
+    #    pass
+    if args.dataset == 'COCO_PERSON':
+        if args.dataset_root == VOC_ROOT:
+            if not os.path.exists(COCO_ROOT):
+                raise ValueError('Must specify dataset_root if specifying dataset')
+            print("WARNING: Using default COCO dataset_root because " +
+                  "--dataset_root was not specified.")
+            args.dataset_root = COCO_ROOT
+        cfg = globals()['coco_person_{}'.format(args.size)]
+        test_dataset = COCOPersonDetection(root=args.dataset_root,
+                                            image_set='val2014',
+                                            transform=BaseTransform(cfg['min_dim'], MEANS))
+        gt_json = os.path.expanduser('~/data/datasets/COCO/annotations/instances_val2014.json')
+        just_person=True
+    elif args.dataset == 'MODANET':
+        cfg = globals()['modanet_{}'.format(args.size)]
+        print(cfg)
+        h5_root = os.path.expanduser('~/data/datasets/modanet/modanet_{}_{}_{}_hdf5.hdf5')
+        h5_root_train = h5_root.format(cfg['min_dim']//2, cfg['min_dim'], 'train')
+        h5_root_val = h5_root.format(cfg['min_dim']//2, cfg['min_dim'], 'val')
+        test_dataset = ModanetDetectionHDF5(h5_root_val, part='val', transform=BaseTransform(cfg['min_dim'], MEANS))
+        gt_json = os.path.expanduser('~/data/datasets/modanet/Annots/modanet_instances_val_new.json')
+        just_person = False
     else:
-        raise TypeError('Invalid dataset name')
+        raise TypeError('{} is an invalid dataset name'.format(args.dataset))
     # load net
     #num_classes = len(labelmap) + 1                      # +1 for background
-    net = build_ssd(config, 300, num_classes)            # initialize SSD
+    net = build_ssd(cfg, size=cfg['min_dim'], num_classes=cfg['num_classes'] )
+    #net = build_ssd(cfg, 300, num_classes)            # initialize SSD
     net.load_state_dict(torch.load(args.trained_model))
     net.eval()
     print('Finished loading model!')
     # load data
-    dataset = COCOPersonDetection(args.coco_root, image_set='val2014', transform=BaseTransform(300, dataset_mean))
-    data_num = len(dataset)
+    #dataset = COCOPersonDetection(args.coco_root, image_set='val2014', transform=BaseTransform(300, dataset_mean))
+    data_num = len(test_dataset)
     #dataset = VOCDetection(args.voc_root, [('2007', set_type)],
     #                       BaseTransform(300, dataset_mean),
     #                       VOCAnnotationTransform())
-    data_loader = data.DataLoader(dataset, batch_size=1,
-                                  num_workers=8,
+    data_loader = data.DataLoader(test_dataset, batch_size=1,
+                                  num_workers=0,
                                   shuffle=False, collate_fn=detection_collate,
                                   pin_memory=True)
     if args.cuda:
         net = net.cuda()
         cudnn.benchmark = True
     # evaluation
-    test_net_coco( gt_json, net, args.cuda, data_loader,
-                  just_person=args.just_person, thresh=args.confidence_threshold)
+    if args.dataset == 'COCO_PERSON':
+        test_net_coco( gt_json, net, args.cuda, data_loader,
+                    just_person=just_person, thresh=args.confidence_threshold)
+    elif args.dataset == 'MODANET':
+        test_net_modanet_hdf5(gt_json, net, args.cuda, data_loader, just_person=just_person, thresh=args.confidence_threshold)
