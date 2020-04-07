@@ -8,6 +8,13 @@ import torch
 import cv2
 import numpy as np
 
+configs = {}
+configs['coco_person_416'] = coco_person_416
+configs['coco_person_800'] = coco_person_800
+configs['modanet_128'] = modanet_128
+configs['modanet_256'] = modanet_256
+configs['modanet_512'] = modanet_512
+
 def detection_collate(batch):
     """Custom collate fn for dealing with batches of images that have a different
     number of associated object annotations (bounding boxes).
