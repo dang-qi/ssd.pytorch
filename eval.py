@@ -336,14 +336,9 @@ if __name__ == '__main__':
     #    num_classes = 14 # plus background
     #    pass
     if args.dataset == 'COCO_PERSON':
-        if args.dataset_root == VOC_ROOT:
-            if not os.path.exists(COCO_ROOT):
-                raise ValueError('Must specify dataset_root if specifying dataset')
-            print("WARNING: Using default COCO dataset_root because " +
-                  "--dataset_root was not specified.")
-            args.dataset_root = COCO_ROOT
+        dataset_root = COCO_ROOT
         cfg = globals()['coco_person_{}'.format(args.size)]
-        test_dataset = COCOPersonDetection(root=args.dataset_root,
+        test_dataset = COCOPersonDetection(root=dataset_root,
                                             image_set='val2014',
                                             transform=BaseTransform(cfg['min_dim'], MEANS))
         gt_json = os.path.expanduser('~/data/datasets/COCO/annotations/instances_val2014.json')
