@@ -67,6 +67,9 @@ def parse_arg():
                         help='Just evaluate person result for coco')
     parser.add_argument('--dataset', default='COCO_PERSON', type=str,
                         help='Datset name, can be coco_person and modanet')
+    parser.add_argument('--size', default=256, type=int,
+                        help='input image size, just vailid for hdf5 dataset coco person dataset')
+    
 
     args = parser.parse_args()
 
