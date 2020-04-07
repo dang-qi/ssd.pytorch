@@ -13,7 +13,7 @@ from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection, BaseTransform, 
 from data import ModanetDetectionHDF5, MEANS
 from data import VOC_CLASSES as labelmap
 import torch.utils.data as data
-from data import coco_person
+from data import configs
 
 from ssd import build_ssd
 
@@ -340,14 +340,14 @@ if __name__ == '__main__':
     #    pass
     if args.dataset == 'COCO_PERSON':
         dataset_root = COCO_ROOT
-        cfg = globals()['coco_person_{}'.format(args.size)]
+        cfg = configs['coco_person_{}'.format(args.size)]
         test_dataset = COCOPersonDetection(root=dataset_root,
                                             image_set='val2014',
                                             transform=BaseTransform(cfg['min_dim'], MEANS))
         gt_json = os.path.expanduser('~/data/datasets/COCO/annotations/instances_val2014.json')
         just_person=True
     elif args.dataset == 'MODANET':
-        cfg = globals()['modanet_{}'.format(args.size)]
+        configs['modanet_{}'.format(args.size)]
         print(cfg)
         h5_root = os.path.expanduser('~/data/datasets/modanet/modanet_{}_{}_{}_hdf5.hdf5')
         h5_root_train = h5_root.format(cfg['min_dim']//2, cfg['min_dim'], 'train')
