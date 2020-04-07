@@ -347,7 +347,7 @@ if __name__ == '__main__':
         gt_json = os.path.expanduser('~/data/datasets/COCO/annotations/instances_val2014.json')
         just_person=True
     elif args.dataset == 'MODANET':
-        configs['modanet_{}'.format(args.size)]
+        cfg = configs['modanet_{}'.format(args.size)]
         print(cfg)
         h5_root = os.path.expanduser('~/data/datasets/modanet/modanet_{}_{}_{}_hdf5.hdf5')
         h5_root_train = h5_root.format(cfg['min_dim']//2, cfg['min_dim'], 'train')
