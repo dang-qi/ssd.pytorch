@@ -25,7 +25,7 @@ def str2bool(v):
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Training With Pytorch')
 train_set = parser.add_mutually_exclusive_group()
-parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO', 'COCO_PERSON', 'MODANET'],
+parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO', 'COCO_PERSON', 'MODANET', 'MODANET_WHOLE'],
                     type=str, help='VOC or COCO')
 parser.add_argument('--dataset_root', default=VOC_ROOT,
                     help='Dataset root directory path')
@@ -88,6 +88,17 @@ def train():
         dataset = COCODetection(root=args.dataset_root,
                                 transform=SSDAugmentation(cfg['min_dim'],
                                                           MEANS))
+    elif args.dataset == 'MODANET_WHOLE':
+        cfg = globals()['modanet_whole_{}'.format(args.size)]
+        anno_root = os.path.expanduser('~/data/annotations/modanet2018_instances_revised.pkl')
+        im_root = os.path.expanduser('~/data/datasets/modanet/Images/train')
+        dataset = ModanetDetection(anno_root, im_root, part='train', 
+                                   transform=SSDAugmentation(cfg['min_dim'], MEANS))
+        test_dataset = ModanetDetection(anno_root, im_root, part='val', 
+                                   transform=SSDAugmentation(cfg['min_dim'], MEANS))
+        gt_json = os.path.expanduser('~/data/datasets/modanet/Annots/modanet_instances_val_new.json')
+        just_person = False
+        
     elif args.dataset == 'VOC':
         if args.dataset_root == COCO_ROOT:
             parser.error('Must specify dataset if specifying dataset_root')
@@ -245,6 +256,8 @@ def train():
             net_test = net.module
             if args.dataset == 'MODANET':
                 test_net_modanet_hdf5(gt_json, net_test, args.cuda, test_iter, just_person=just_person, thresh=0.01)
+            elif args.dataset == 'MODANET_WHOLE':
+                test_net_coco( gt_json, net, args.cuda, test_iter, thresh=0.01)
             else:
                 test_net_coco( gt_json, net_test, args.cuda, test_iter,
                     just_person=just_person, thresh=0.01)

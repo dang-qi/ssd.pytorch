@@ -3,6 +3,7 @@ from .voc0712 import VOCDetection, VOCAnnotationTransform, VOC_CLASSES, VOC_ROOT
 from .coco import COCODetection, COCOAnnotationTransform, COCO_CLASSES, COCO_ROOT, get_label_map
 from .coco_person import COCOPersonDetection, COCO_PERSON_CLASSES
 from .modanet_hdf5 import ModanetDetectionHDF5
+from .modanet import ModanetDetection
 from .config import *
 import torch
 import cv2
@@ -14,6 +15,8 @@ configs['coco_person_800'] = coco_person_800
 configs['modanet_128'] = modanet_128
 configs['modanet_256'] = modanet_256
 configs['modanet_512'] = modanet_512
+configs['modanet_whole_800'] = modanet_whole_800
+
 
 def detection_collate(batch):
     """Custom collate fn for dealing with batches of images that have a different
