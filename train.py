@@ -95,7 +95,7 @@ def train():
         dataset = ModanetDetection(anno_root, im_root, part='train', 
                                    transform=SSDAugmentation(cfg['min_dim'], MEANS))
         test_dataset = ModanetDetection(anno_root, im_root, part='val', 
-                                   transform=SSDAugmentation(cfg['min_dim'], MEANS))
+                                   transform=BaseTransform(cfg['min_dim'], MEANS))
         gt_json = os.path.expanduser('~/data/datasets/modanet/Annots/modanet_instances_val_new.json')
         just_person = False
         
